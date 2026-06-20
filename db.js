@@ -56,7 +56,10 @@ async function ensureMongoConnection() {
   if (!process.env.MONGODB_URI) return false;
   if (mongoose.connection.readyState === 1) return true;
   if (!connectionPromise) {
-    connectionPromise = mongoose.connect(process.env.MONGODB_URI);
+    connectionPromise = mongoose.connect(process.env.MONGODB_URI).then(conn => {
+      console.log('Successfully connected to MongoDB database!');
+      return conn;
+    });
   }
   try {
     await connectionPromise;
