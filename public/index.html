@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodedPad - Secure Collaborative Notepad & File Sharing</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+  
+  <!-- Feather Icons CDN -->
+  <script src="https://unpkg.com/feather-icons"></script>
+  
+  <!-- Main Stylesheet -->
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+  <!-- ================= LANDING SCREEN ================= -->
+  <div id="landing-screen" class="screen active">
+    <div class="glow-sphere sphere-1"></div>
+    <div class="glow-sphere sphere-2"></div>
+    
+    <div class="floating-theme-toggle">
+      <button id="landing-theme-toggle-btn" class="btn btn-icon-only" title="Toggle Light/Dark Theme">
+        <i data-feather="sun"></i>
+      </button>
+    </div>
+    
+    <div class="landing-card">
+      <div class="logo-area">
+        <div class="logo-icon"><i data-feather="file-text"></i></div>
+        <h1>Coded<span>Pad</span></h1>
+      </div>
+      
+      <p class="tagline">An encrypted, zero-account notepad with seamless file sharing. Create a pad, write notes, drag-and-drop uploads, and share the URL.</p>
+      
+      <form id="create-pad-form" class="pad-form">
+        <div class="input-group">
+          <span class="url-prefix">codedpad.com/</span>
+          <input type="text" id="pad-slug-input" placeholder="my-awesome-pad" autocomplete="off" required pattern="[a-zA-Z0-9-_]+">
+        </div>
+        
+        <div class="action-buttons">
+          <button type="submit" class="btn btn-primary">
+            <i data-feather="plus-circle"></i> Create / Go to Pad
+          </button>
+          <button type="button" id="random-pad-btn" class="btn btn-secondary">
+            <i data-feather="shuffle"></i> Random Pad Name
+          </button>
+        </div>
+      </form>
+
+      <div class="features-grid">
+        <div class="feature-item">
+          <div class="feature-icon"><i data-feather="user-x"></i></div>
+          <h3>No Accounts</h3>
+          <p>No registration or logins. Start writing instantly.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon"><i data-feather="shield"></i></div>
+          <h3>Password Lock</h3>
+          <p>Add a password to secure your notes and shared files.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon"><i data-feather="upload-cloud"></i></div>
+          <h3>Easy Uploads</h3>
+          <p>Drag & drop documents, images, and archives directly into your notes.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= PASSWORD PROMPT SCREEN ================= -->
+  <div id="password-prompt-screen" class="screen">
+    <div class="glow-sphere sphere-3"></div>
+    
+    <div class="password-card">
+      <div class="logo-icon"><i data-feather="lock"></i></div>
+      <h2>Protected Pad</h2>
+      <p>This pad requires a password to access.</p>
+      
+      <form id="unlock-pad-form">
+        <div class="password-input-wrapper">
+          <input type="password" id="unlock-password-input" placeholder="Enter Pad Password" required autofocus>
+          <button type="button" id="toggle-unlock-pass" class="toggle-password-btn">
+            <i data-feather="eye"></i>
+          </button>
+        </div>
+        <div id="unlock-error" class="error-msg">Incorrect password. Please try again.</div>
+        <button type="submit" class="btn btn-primary btn-block">
+          <i data-feather="unlock"></i> Unlock Pad
+        </button>
+      </form>
+      
+      <button type="button" class="btn btn-text btn-back-home"><i data-feather="arrow-left"></i> Back to Homepage</button>
+    </div>
+  </div>
+
+  <!-- ================= WORKSPACE SCREEN ================= -->
+  <div id="workspace-screen" class="screen">
+    <header class="workspace-header">
+      <div class="header-left">
+        <a href="/" class="header-logo">
+          <i data-feather="file-text"></i>
+          <span>CodedPad</span>
+        </a>
+        <div class="divider"></div>
+        <div class="pad-info">
+          <span class="pad-label">Active Pad:</span>
+          <button id="share-pad-btn" class="pad-slug-badge" title="Click to copy pad URL">
+            <span id="active-pad-name">...</span>
+            <i data-feather="copy"></i>
+          </button>
+        </div>
+      </div>
+      
+      <div class="header-right">
+        <!-- Status Indicator -->
+        <div class="status-indicator-group">
+          <div id="save-status-dot" class="status-dot"></div>
+          <span id="save-status-text">Checking connection...</span>
+        </div>
+
+        <div class="header-actions">
+          <button id="theme-toggle-btn" class="btn btn-icon-only" title="Toggle Light/Dark Theme">
+            <i data-feather="sun"></i>
+          </button>
+          <button id="lock-pad-settings-btn" class="btn btn-icon-only" title="Protect Pad with Password">
+            <i data-feather="unlock"></i>
+          </button>
+          <button id="new-pad-header-btn" class="btn btn-secondary btn-sm" title="Create a new Pad">
+            <i data-feather="plus"></i> New Pad
+          </button>
+          <button id="toggle-sidebar-btn" class="btn btn-icon-only badge-container" title="Toggle Attachments">
+            <i data-feather="paperclip"></i>
+            <span id="files-count-badge" class="count-badge">0</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="workspace-layout">
+      <!-- Editor Column -->
+      <section class="editor-column">
+        <div class="editor-toolbar">
+          <div class="toolbar-left">
+            <button id="copy-text-btn" class="btn btn-text btn-sm" title="Copy notepad text">
+              <i data-feather="clipboard"></i> Copy Text
+            </button>
+            <button id="download-text-btn" class="btn btn-text btn-sm" title="Download as text file">
+              <i data-feather="download"></i> Download Note
+            </button>
+            <div class="divider-v"></div>
+            <button id="toggle-readonly-btn" class="btn btn-text btn-sm" title="Toggle read-only mode">
+              <i data-feather="edit-2"></i> Edit Mode
+            </button>
+          </div>
+          <div class="toolbar-right">
+            <span class="editor-stat" id="word-count">0 words</span>
+            <span class="editor-stat" id="char-count">0 characters</span>
+          </div>
+        </div>
+
+        <div class="editor-wrapper">
+          <!-- Custom Line Number Area -->
+          <div class="line-numbers" id="line-numbers">1</div>
+          
+          <!-- Notepad Text Area -->
+          <textarea id="notepad-textarea" placeholder="Start typing your notes here..." spellcheck="false" autocomplete="off"></textarea>
+        </div>
+      </section>
+
+      <!-- Attachments Sidebar -->
+      <aside class="sidebar" id="attachments-sidebar">
+        <div class="sidebar-header">
+          <h2><i data-feather="paperclip"></i> Attachments</h2>
+          <button id="close-sidebar-btn" class="btn btn-icon-only mobile-only"><i data-feather="x"></i></button>
+        </div>
+
+        <!-- Drag and drop zone -->
+        <div class="drop-zone" id="file-drop-zone">
+          <input type="file" id="file-input-element" multiple class="file-input-hidden">
+          <div class="drop-zone-content">
+            <div class="drop-icon"><i data-feather="upload-cloud"></i></div>
+            <p class="drop-title">Drag & Drop Files here</p>
+            <p class="drop-subtitle">or click to browse files (Max 100MB)</p>
+          </div>
+        </div>
+
+        <!-- Upload Progress Area -->
+        <div id="upload-progress-list" class="upload-progress-container"></div>
+
+        <!-- Attached Files List -->
+        <div class="files-list-wrapper">
+          <h3 class="section-title">Files in this Pad (<span id="files-list-count">0</span>)</h3>
+          <div id="no-files-message" class="no-files-card">
+            <i data-feather="folder"></i>
+            <p>No files attached yet.</p>
+            <p class="subtext">Upload files to share them with anyone using this Pad link.</p>
+          </div>
+          <ul class="files-list" id="attached-files-list">
+            <!-- Dynamically populated files list items -->
+          </ul>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- ================= PASSWORD SETTINGS MODAL ================= -->
+  <div class="modal-overlay" id="password-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2><i data-feather="lock"></i> Password Protection</h2>
+        <button class="btn-icon-only modal-close-btn" id="close-password-modal-btn"><i data-feather="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Adding a password locks this pad. Anyone who visits the URL will have to supply the password to read, edit, or access files.</p>
+        
+        <form id="save-password-form">
+          <div class="form-group">
+            <label for="pad-password">Pad Password</label>
+            <div class="password-input-wrapper">
+              <input type="password" id="pad-password" placeholder="Enter new password" autocomplete="new-password">
+              <button type="button" id="toggle-pad-pass" class="toggle-password-btn">
+                <i data-feather="eye"></i>
+              </button>
+            </div>
+            <p class="help-text">Leave blank to remove password protection.</p>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="cancel-password-modal-btn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Protection</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= PREVIEW MODAL ================= -->
+  <div class="modal-overlay modal-lg" id="preview-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="preview-title">File Preview</h2>
+        <div class="header-buttons">
+          <a href="#" id="preview-download-link" class="btn btn-secondary btn-sm" download>
+            <i data-feather="download"></i> Download
+          </a>
+          <button class="btn-icon-only modal-close-btn" id="close-preview-modal-btn"><i data-feather="x"></i></button>
+        </div>
+      </div>
+      <div class="modal-body preview-body" id="preview-content-area">
+        <!-- Render preview content here based on mime type -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast-notification" class="toast">
+    <i id="toast-icon" data-feather="info"></i>
+    <span id="toast-text">Success message</span>
+  </div>
+
+  <!-- Main JavaScript App -->
+  <script src="/app.js"></script>
+</body>
+</html>
