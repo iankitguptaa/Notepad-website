@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -14,24 +15,26 @@ app.use(express.json());
 // Serve static assets from public folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Configure Multer for file uploads
-const storage = multer.diskStorage({
-  destination: async (req, file, cb) => {
-    const slug = req.params.slug.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
-    const padUploadsDir = path.join(db.UPLOADS_DIR, slug);
-    try {
-      await fs.promises.mkdir(padUploadsDir, { recursive: true });
-      cb(null, padUploadsDir);
-    } catch (err) {
-      cb(err);
-    }
-  },
-  filename: (req, file, cb) => {
-    const uniqueId = crypto.randomUUID();
-    const ext = path.extname(file.originalname);
-    cb(null, `${uniqueId}${ext}`);
-  }
-});
+// Configure Multer for file uploads (dynamic memory storage for Vercel Blob, disk storage for local fallback)
+const storage = process.env.BLOB_READ_WRITE_TOKEN
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: async (req, file, cb) => {
+        const slug = req.params.slug.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
+        const padUploadsDir = path.join(db.UPLOADS_DIR, slug);
+        try {
+          await fs.promises.mkdir(padUploadsDir, { recursive: true });
+          cb(null, padUploadsDir);
+        } catch (err) {
+          cb(err);
+        }
+      },
+      filename: (req, file, cb) => {
+        const uniqueId = crypto.randomUUID();
+        const ext = path.extname(file.originalname);
+        cb(null, `${uniqueId}${ext}`);
+      }
+    });
 
 const upload = multer({
   storage,
@@ -165,6 +168,11 @@ app.get('/api/pad/:slug/files/:fileId', verifyPadAccess, async (req, res) => {
       return res.status(404).send('File not found in pad');
     }
 
+    // Direct redirect to Vercel Blob URL if using cloud storage
+    if (process.env.BLOB_READ_WRITE_TOKEN && fileInfo.url) {
+      return res.redirect(fileInfo.url);
+    }
+
     const filePath = path.join(db.UPLOADS_DIR, slug.toLowerCase(), fileInfo.filename);
 
     // Check if physical file exists
@@ -197,8 +205,12 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`===============================================`);
-  console.log(` CodedPad server running at http://localhost:${PORT}`);
-  console.log(`===============================================`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`===============================================`);
+    console.log(` CodedPad server running at http://localhost:${PORT}`);
+    console.log(`===============================================`);
+  });
+}
+
+module.exports = app;

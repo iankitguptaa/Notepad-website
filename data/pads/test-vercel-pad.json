@@ -1,0 +1,19 @@
+{
+  "slug": "test-vercel-pad",
+  "text": "Hello from browser subagent verification! This verifies that the lo cal filesystem fallback database works perfectly.",
+  "salt": "e008ff4475f89cb3a777d46ec41c2bcb",
+  "passwordHash": null,
+  "createdAt": "2026-06-20T19:21:28.734Z",
+  "updatedAt": "2026-06-20T19:23:30.426Z",
+  "files": [
+    {
+      "id": "6b576035-1bd3-4f6f-b64d-f1fa1759f15a",
+      "originalName": "test_upload.txt",
+      "filename": "ccf5f778-466c-4bf0-a50d-792a6a7a6419.txt",
+      "mimeType": "text/plain",
+      "size": 45,
+      "url": "",
+      "uploadedAt": "2026-06-20T19:23:30.425Z"
+    }
+  ]
+}
