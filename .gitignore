@@ -1,0 +1,9 @@
+# Dependencies
+node_modules/
+
+# Environment configurations
+.env
+.env.local
+
+# Local fallback database and uploaded files
+data/
