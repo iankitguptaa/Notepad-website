@@ -1,7 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
-const { kv } = require('@vercel/kv');
+const mongoose = require('mongoose');
 const { put, del } = require('@vercel/blob');
 
 const DATA_DIR = path.join(__dirname, 'data');
@@ -30,25 +30,56 @@ function getPadFilePath(slug) {
   return path.join(PADS_DIR, `${safeSlug}.json`);
 }
 
-// Helper to determine if we should use Vercel KV
-function isKVEnabled() {
-  return !!process.env.KV_REST_API_URL;
+// ================= MONGODB CONFIG & SCHEMA =================
+const PadSchema = new mongoose.Schema({
+  slug: { type: String, required: true, unique: true, index: true },
+  text: { type: String, default: '' },
+  salt: { type: String, required: true },
+  passwordHash: { type: String, default: null },
+  createdAt: { type: String, default: () => new Date().toISOString() },
+  updatedAt: { type: String, default: () => new Date().toISOString() },
+  files: [{
+    id: { type: String, required: true },
+    originalName: { type: String, required: true },
+    filename: { type: String, required: true },
+    mimeType: { type: String, required: true },
+    size: { type: Number, required: true },
+    uploadedAt: { type: String, default: () => new Date().toISOString() },
+    url: { type: String, default: '' }
+  }]
+});
+
+const Pad = mongoose.models.Pad || mongoose.model('Pad', PadSchema);
+
+let connectionPromise = null;
+async function ensureMongoConnection() {
+  if (!process.env.MONGODB_URI) return false;
+  if (mongoose.connection.readyState === 1) return true;
+  if (!connectionPromise) {
+    connectionPromise = mongoose.connect(process.env.MONGODB_URI).then(conn => {
+      console.log('Successfully connected to MongoDB database!');
+      return conn;
+    });
+  }
+  try {
+    await connectionPromise;
+    return true;
+  } catch (error) {
+    console.error('MongoDB Connection Error:', error);
+    connectionPromise = null;
+    throw error;
+  }
 }
 
 // ================= DATABASE CRUD OPERATIONS =================
 
 // Get pad by slug
 async function getPad(slug) {
-  const safeSlug = slug.toLowerCase();
-  
-  if (isKVEnabled()) {
-    try {
-      const pad = await kv.get(`pad:${safeSlug}`);
-      return pad; // @vercel/kv automatically parses JSON string to object
-    } catch (error) {
-      console.error('Vercel KV Error (getPad):', error);
-      throw error;
-    }
+  if (process.env.MONGODB_URI) {
+    await ensureMongoConnection();
+    const pad = await Pad.findOne({ slug: slug.toLowerCase() });
+    if (!pad) return null;
+    return pad.toObject();
   }
 
   await initDb();
@@ -66,46 +97,38 @@ async function getPad(slug) {
 
 // Create or update a pad
 async function savePad(slug, { text, password, updatePassword = false }) {
-  const safeSlug = slug.toLowerCase();
-  
-  if (isKVEnabled()) {
-    try {
-      let pad = await getPad(slug);
-      
-      if (!pad) {
-        // New pad
-        const salt = generateSalt();
-        pad = {
-          slug: safeSlug,
-          text: text || '',
-          salt: salt,
-          passwordHash: password ? hashPassword(password, salt) : null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          files: []
-        };
-      } else {
-        // Update existing pad
-        if (text !== undefined) {
-          pad.text = text;
-        }
-        if (updatePassword) {
-          if (password) {
-            pad.salt = generateSalt();
-            pad.passwordHash = hashPassword(password, pad.salt);
-          } else {
-            pad.passwordHash = null;
-          }
-        }
-        pad.updatedAt = new Date().toISOString();
+  if (process.env.MONGODB_URI) {
+    await ensureMongoConnection();
+    let pad = await Pad.findOne({ slug: slug.toLowerCase() });
+    
+    if (!pad) {
+      // New pad
+      const salt = generateSalt();
+      pad = new Pad({
+        slug: slug.toLowerCase(),
+        text: text || '',
+        salt: salt,
+        passwordHash: password ? hashPassword(password, salt) : null,
+        files: []
+      });
+    } else {
+      // Update existing pad
+      if (text !== undefined) {
+        pad.text = text;
       }
-      
-      await kv.set(`pad:${safeSlug}`, pad);
-      return pad;
-    } catch (error) {
-      console.error('Vercel KV Error (savePad):', error);
-      throw error;
+      if (updatePassword) {
+        if (password) {
+          pad.salt = generateSalt();
+          pad.passwordHash = hashPassword(password, pad.salt);
+        } else {
+          pad.passwordHash = null;
+        }
+      }
+      pad.updatedAt = new Date().toISOString();
     }
+    
+    await pad.save();
+    return pad.toObject();
   }
 
   await initDb();
@@ -117,7 +140,7 @@ async function savePad(slug, { text, password, updatePassword = false }) {
     // New pad
     const salt = generateSalt();
     pad = {
-      slug: safeSlug,
+      slug: slug.toLowerCase(),
       text: text || '',
       salt: salt,
       passwordHash: password ? hashPassword(password, salt) : null,
@@ -158,14 +181,13 @@ async function verifyPadPassword(slug, password) {
 
 // Add a file record to a pad
 async function addFileToPad(slug, fileInfo) {
-  const safeSlug = slug.toLowerCase();
   let filename = fileInfo.filename;
   let url = '';
 
   if (process.env.BLOB_READ_WRITE_TOKEN) {
     const uniqueId = crypto.randomUUID();
     const ext = path.extname(fileInfo.originalname);
-    const blobFilename = `${safeSlug}/${uniqueId}${ext}`;
+    const blobFilename = `${slug.toLowerCase()}/${uniqueId}${ext}`;
     
     const blob = await put(blobFilename, fileInfo.buffer, {
       access: 'public',
@@ -185,20 +207,15 @@ async function addFileToPad(slug, fileInfo) {
     uploadedAt: new Date().toISOString()
   };
 
-  if (isKVEnabled()) {
-    try {
-      const pad = await getPad(slug);
-      if (!pad) throw new Error('Pad not found');
+  if (process.env.MONGODB_URI) {
+    await ensureMongoConnection();
+    const pad = await Pad.findOne({ slug: slug.toLowerCase() });
+    if (!pad) throw new Error('Pad not found');
 
-      pad.files.push(newFileRecord);
-      pad.updatedAt = new Date().toISOString();
-      
-      await kv.set(`pad:${safeSlug}`, pad);
-      return pad;
-    } catch (error) {
-      console.error('Vercel KV Error (addFileToPad):', error);
-      throw error;
-    }
+    pad.files.push(newFileRecord);
+    pad.updatedAt = new Date().toISOString();
+    await pad.save();
+    return pad.toObject();
   } else {
     const pad = await getPad(slug);
     if (!pad) throw new Error('Pad not found');
@@ -214,8 +231,13 @@ async function addFileToPad(slug, fileInfo) {
 
 // Remove a file record and physical file
 async function removeFileFromPad(slug, fileId) {
-  const safeSlug = slug.toLowerCase();
-  let pad = await getPad(slug);
+  let pad;
+  if (process.env.MONGODB_URI) {
+    await ensureMongoConnection();
+    pad = await Pad.findOne({ slug: slug.toLowerCase() });
+  } else {
+    pad = await getPad(slug);
+  }
 
   if (!pad) throw new Error('Pad not found');
 
@@ -235,7 +257,7 @@ async function removeFileFromPad(slug, fileId) {
     }
   } else if (!process.env.BLOB_READ_WRITE_TOKEN) {
     // Delete the local physical file
-    const physicalFilePath = path.join(UPLOADS_DIR, safeSlug, fileInfo.filename);
+    const physicalFilePath = path.join(UPLOADS_DIR, slug.toLowerCase(), fileInfo.filename);
     try {
       await fs.unlink(physicalFilePath);
     } catch (error) {
@@ -250,14 +272,9 @@ async function removeFileFromPad(slug, fileId) {
   pad.updatedAt = new Date().toISOString();
 
   // 3. Save updated pad metadata
-  if (isKVEnabled()) {
-    try {
-      await kv.set(`pad:${safeSlug}`, pad);
-      return pad;
-    } catch (error) {
-      console.error('Vercel KV Error (removeFileFromPad):', error);
-      throw error;
-    }
+  if (process.env.MONGODB_URI) {
+    await pad.save();
+    return pad.toObject();
   } else {
     const filePath = getPadFilePath(slug);
     await fs.writeFile(filePath, JSON.stringify(pad, null, 2), 'utf8');
@@ -265,37 +282,35 @@ async function removeFileFromPad(slug, fileId) {
   }
 }
 
-// Clean up entire pad
+// Clean up entire pad (optional)
 async function deletePad(slug) {
-  const safeSlug = slug.toLowerCase();
-  const pad = await getPad(slug);
-  if (!pad) return;
+  if (process.env.MONGODB_URI) {
+    await ensureMongoConnection();
+    const pad = await Pad.findOne({ slug: slug.toLowerCase() });
+    if (!pad) return;
 
-  // Delete all Vercel Blob files if present
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
-    for (const file of pad.files) {
-      if (file.url) {
-        try {
-          await del(file.url, {
-            token: process.env.BLOB_READ_WRITE_TOKEN
-          });
-        } catch (e) {
-          console.error(`Failed to delete blob during pad deletion: ${file.url}`, e);
+    // Delete all Vercel Blob files
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      for (const file of pad.files) {
+        if (file.url) {
+          try {
+            await del(file.url, {
+              token: process.env.BLOB_READ_WRITE_TOKEN
+            });
+          } catch (e) {
+            console.error(`Failed to delete blob during pad deletion: ${file.url}`, e);
+          }
         }
       }
     }
-  }
 
-  if (isKVEnabled()) {
-    try {
-      await kv.del(`pad:${safeSlug}`);
-    } catch (error) {
-      console.error('Vercel KV Error (deletePad):', error);
-      throw error;
-    }
+    await Pad.deleteOne({ slug: slug.toLowerCase() });
   } else {
-    // Delete all physical files locally
-    const padUploadsDir = path.join(UPLOADS_DIR, safeSlug);
+    const pad = await getPad(slug);
+    if (!pad) return;
+
+    // Delete all physical files
+    const padUploadsDir = path.join(UPLOADS_DIR, slug.toLowerCase());
     try {
       const files = await fs.readdir(padUploadsDir);
       for (const file of files) {
